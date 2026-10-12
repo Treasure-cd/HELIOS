@@ -1,148 +1,123 @@
 # HELIOS
 
-**Intelligent energy management simulation for hybrid grid–solar–battery–generator systems, built around Uyo, Nigeria's unreliable power supply.**
+**Can a smarter energy-management rule cut cost and generator use for a household on an unreliable grid? A simulation study for Uyo, Nigeria.**
 
-HELIOS asks one question: *can a smarter decision layer, choosing between the public grid, solar panels, a battery and a backup generator, cut cost and fuel use compared to naive switching behavior?*
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/treasure-cd/helios/blob/main/notebooks/helios_experiment.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/treasure-cd/helios/blob/main/notebooks/helios_part2.ipynb)
 
-The project is a simulation and decision-logic study. It runs the same household, the same solar resource and the same outage history through several control strategies, then compares them on cost, generator runtime and unmet demand.
+![Cover: saving vs reactive strategy](figures/fig06_seeds_cost_saving.png)
 
----
+## The question
 
-## Why this exists
+A household has grid power, solar panels, a battery and a backup generator. When should it charge, discharge, import from the grid, or start the generator? HELIOS runs the same household, solar resource and outage history through several control strategies and compares them on cost and generator runtime.
 
-In much of Uyo, grid power is intermittent. Households fall back on petrol or diesel generators, which are expensive, noisy and polluting. Adding solar and a battery helps, but only if the system decides *when* to charge, discharge, import from the grid or start the generator. A poor controller wastes the hardware. This project tests whether better rules, and a simple outage-risk predictor, make a measurable difference.
+## Headline result
 
-## How it works
+On a small system (3 kW PV, 2.5 kWh battery) under frequent outages, a simple forecast-free rule, **holding a 50% battery reserve only between 15:00 and 23:00**, cut annual operating cost by about **10%** and generator hours by **25-33%** across 20 outage years the rule was never tuned on. A fixed all-day reserve helps small batteries but loses money on large ones, and a learned outage predictor did not beat the simple rule.
 
-### Data
-
-| Input | Source |
-|---|---|
-| Solar irradiance | Real hourly data for Uyo from the [NASA POWER](https://power.larc.nasa.gov/) API (UTC shifted to local time) |
-| Household demand | Synthetic hourly load curves, calibrated to a typical household |
-| Grid availability | Synthetic outage model: outages are discrete events (start + duration), not independent hourly coin flips |
-
-Outage scenarios: **mild, moderate, severe, extreme** (extreme targets roughly 70% grid availability). Every strategy sees the *same* hardware, solar, demand and outage history, so comparisons are fair.
-
-### Strategies compared
-
-- **Naive**: baseline switching with no foresight
-- **Reactive**: responds to the current state only
-- **HELIOS (static reserve)**: keeps a fixed battery reserve (30 / 50 / 70%) for outages
-- **HELIOS (predictive)**: uses a logistic-regression outage-risk model to set the reserve dynamically
-- **Oracle**: perfect-foresight benchmark, used as an upper bound on what any controller could achieve
-
-### Metrics
-
-Total cost, generator hours, fuel use and unserved energy, across four outage scenarios and multiple random seeds.
-
-## Project structure
-
-```
-helios/
-├── data/
-│   ├── raw/solar/            # NASA POWER CSVs
-│   ├── processed/            # solar_combined.csv, household_demand.csv,
-│   │                         # grid_availability.csv, state_table.csv
-│   └── results/              # experiment outputs
-├── notebooks/
-│   └── helios_experiment.ipynb
-├── figures/
-├── src/
-│   ├── main.py
-│   ├── data/                 # load_solar.py, generate_demand.py, outage generator
-│   ├── simulation/           # config.py, solar.py, engine, strategies, risk.py
-│   ├── run_experiment.py     # naive vs reactive vs HELIOS runs
-│   ├── run_sweep.py          # multi-seed, evening-pattern and sizing sweeps
-│   ├── train_risk.py         # trains the outage-risk predictor
-│   └── tests/
-└── README.md
-```
-
-## Getting started
-
-```bash
-git clone https://github.com/<your-username>/<repo-name>.git
-cd <repo-name>
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### Build the input data
-
-```bash
-python src/data/load_solar.py
-python src/data/generate_demand.py
-```
-
-This writes the solar, demand, grid availability and merged state table CSVs to `data/processed/`.
-
-### Run the experiment
-
-```bash
-python src/run_experiment.py                     # all strategies, all outage scenarios
-python src/run_sweep.py --pattern evening        # evening-heavy demand pattern
-python src/run_sweep.py --sweep                  # PV / battery sizing sweep
-python src/train_risk.py                         # train the outage-risk predictor
-```
-
-Results land in `data/results/`.
-
-### Notebook
-
-`notebooks/helios_experiment.ipynb` walks through the same pipeline step by step. It runs fine in Google Colab: upload the project zip, unzip it, and `%cd` into the folder.
-
-### Tests
-
-```bash
-pytest src/tests
-```
-
-## Assumptions
-
-All model assumptions live in `src/simulation/config.py`, split into three groups:
-
-1. **Sourced**: taken from a reference (e.g. NASA POWER data)
-2. **Estimated**: reasonable engineering estimates
-3. **Scenario**: deliberately varied to test robustness
-
-Default hardware: 5 kW PV array, 0.80 system efficiency, 5 kWh battery. Change these in `config.py` or via the sweep script.
+Gains depend on grid quality and system size. When outages are mild, or the system is oversized, smarter control adds almost nothing.
 
 ## Results
 
-> Fill this in with your final numbers before publishing.
+Cost saving relative to the reactive baseline. Severe outages, 3 kW PV / 2.5 kWh battery, held-out seeds 10-29 (higher is better):
 
-| Scenario | Strategy | Cost | Generator hours | Unserved energy |
+| Strategy | Evening-heavy outages | Uniform outages |
+|---|---|---|
+| Fixed 50% reserve (r50) | +7.7% | +11.0% |
+| **Window 50% reserve (w50)** | **+9.6%** | **+11.5%** |
+| Predictive, no grid top-up (q10) | +2.2% | +2.8% |
+| Predictive (p10) | +1.8% | +1.1% |
+| Oracle (perfect foresight, upper bound) | +25.8% | +27.5% |
+
+For w50 that is roughly ₦44,000-₦51,000 a year against a reactive cost of about ₦440,000-₦460,000.
+
+The value of foresight depends on system size. Oracle saving vs reactive, uniform outages:
+
+| System | Mild | Moderate | Severe | Extreme |
 |---|---|---|---|---|
-| Severe | Reactive | | | |
-| Severe | HELIOS (predictive) | | | |
-| Severe | Oracle | | | |
+| 5 kW / 5 kWh | 0.4% | 1.0% | 4.3% | 14.4% |
+| 3 kW / 2.5 kWh | 6.9% | 15.3% | 27.8% | 41.3% |
 
-Key findings:
+No strategy left any demand unserved, so cost and generator hours are the comparison metrics.
 
-- _e.g. Static reserves cut generator hours but raise cost versus reactive._
-- _e.g. Gains from smarter control are small in mild/moderate outages and largest in severe/extreme ones._
-- _e.g. How close the predictive strategy gets to the oracle._
+## Key findings
+
+1. Using the battery at all is the biggest saving: the naive strategy costs 120-340% more than reactive.
+2. The value of coordination rises with grid unreliability and falls with system size.
+3. A fixed reserve cuts generator hours but can raise cost, and it hurts on large batteries.
+4. **The window reserve is the best deployable rule tested.** It beat reactive at every system size under severe outages and never lost more than 0.3% anywhere.
+5. The window reserve helps equally when outage timing is random, so its saving does not come from predicting outages. My hypothesis is that reactive spends the battery on the evening peak and leaves it empty for late-night outages. This is untested.
+6. The learned predictor only recovered hour-of-day structure, because the synthetic outage generator has no memory. Whether prediction helps depends on whether real outages have structure beyond time of day.
+
+## Strategies
+
+| Strategy | Behaviour |
+|---|---|
+| Naive | Solar to house, grid when up, generator when the grid drops. Battery unused. |
+| Reactive | Surplus solar charges the battery; battery covers shortfalls whenever it can. The baseline everything is measured against. |
+| Static reserve (r30/r50/r70) | Keeps a fixed battery reserve while the grid is up. |
+| **Window reserve (w30/w50)** | Like reactive, but between 15:00 and 23:00 holds a reserve while the grid is up. |
+| Predictive (p10/p13/q10) | Logistic-regression outage-risk model sets the reserve dynamically. |
+| Oracle | Knows future outages. An upper bound, not a deployable strategy. |
+
+All strategies use identical hardware, solar, demand and outage history.
+
+## Data
+
+| Input | Source |
+|---|---|
+| Solar irradiance | Real hourly data for Uyo from [NASA POWER](https://power.larc.nasa.gov/). Originally scoped for Lagos; Uyo was used because it is the target context. |
+| Household demand | Synthetic hourly profile built from typical Nigerian household appliances |
+| Grid outages | Synthetic: Poisson event counts with lognormal durations, in four scenarios (mild, moderate, severe, extreme) and two start-time patterns (uniform, evening-heavy) |
+
+## Method in brief
+
+- Hourly simulation engine with a per-hour energy-balance check. The run crashes if the numbers don't balance.
+- Boundary tests for battery limits, generator rating, grid constraints and round-trip efficiency.
+- 30 independent outage seeds per configuration, six hardware sizes, strategies compared on paired outage years.
+- Strategy selected on seeds 0-9 and reported on seeds 10-29. The predictor was trained on separate seeds (100-114).
+
+Full write-up: [REPORT.md](REPORT.md)
+
+## Reproduce
+
+```bash
+git clone https://github.com/treasure-cd/REPO-NAME.git
+cd REPO-NAME
+pip install -r requirements.txt
+python src/data/load_solar.py && python src/data/generate_demand.py
+python src/run_sweep.py --sweep --seeds 30       # sizing sweep, uniform outages
+python src/run_sweep.py --sweep --seeds 30 --pattern evening
+python src/train_risk.py                         # outage-risk predictor
+python src/main.py                               # tune/test tables
+pytest src/tests
+```
+
+Results are written to `data/results/`. Or open the notebook in Colab with the badge above.
 
 ## Limitations
 
-- Household demand and outage patterns are synthetic. They are calibrated, not measured.
-- One year of solar data (2025) from a single location.
-- Simplified battery model (no detailed degradation or temperature effects).
-- Results depend on the assumptions in `config.py`.
+- Demand and outages are synthetic, and the evening pattern is an assumption, not measured Uyo data.
+- Battery cost, generator fuel curve and efficiencies are estimates. Costs compare strategies; they are not real bills.
+- The oracle is a heuristic, not an optimiser.
+- One solar year; only the outage timeline varies between seeds.
+- The headline system size was chosen after seeing the sweep because the base system is oversized. All six sizes are reported.
+- Calendar ageing, generator maintenance and time-of-use tariffs are not modelled.
+- Solar timestamps: UTC-to-local handling is unverified. <!-- confirm before publishing -->
 
-## Roadmap
+## Scope
 
-- Validate outage and load models against real metering data
-- Add battery degradation and generator maintenance costs
-- Results dashboard
+Built: data pipeline, simulation engine with tests, six strategy families, oracle, multi-seed and sizing experiments, outage-risk predictor, presentation, dashboard.
+Not built: solar forecasting and anomaly detection. The core questions were answered without them.
 
-## Data and acknowledgements
+## Future work
+
+Real Uyo outage logs and meter data; a proper optimiser (dynamic programming or MPC) as the benchmark; solar forecasting; real tariffs and battery quotes with a cost sensitivity analysis; packaging the window rule as an inverter setting or installer advice tool.
+
+## Acknowledgements
 
 Solar data courtesy of the [NASA POWER Project](https://power.larc.nasa.gov/).
 
 ## Author
 
-**Treasure Ani-Joseph**, Computer Science, University of Uyo
-GitHub: [@treasure-cd](https://github.com/treasure-cd)
+**Treasure Ani-Joseph**, Computer Science, University of Uyo. GitHub: [@treasure-cd](https://github.com/treasure-cd)
