@@ -45,7 +45,7 @@ def load_solar_data():
         )
     )
 
-    # 1. Shift UTC to Lagos time (UTC+1)
+    # 1. Shift UTC to Uyo local time (UTC+1)
     solar["timestamp"] = solar["timestamp"] + pd.Timedelta(hours=1)
 
     # 2. Fix boundary shift: trim next-year spillover and prepend Jan 1 00:00
@@ -55,14 +55,12 @@ def load_solar_data():
     first[["timestamp", "ALLSKY_SFC_SW_DWN"]] = [pd.Timestamp(f"{year}-01-01 00:00"), 0.0]
     solar = pd.concat([first, solar], ignore_index=True)
 
-    # 3. Sanity checks
     print("First timestamp:", solar["timestamp"].min())
     print("Last timestamp: ", solar["timestamp"].max())
     print("Rows:", len(solar))
     print("Duplicates:", solar["timestamp"].duplicated().sum())
     print("Missing timestamps:", solar["timestamp"].isna().sum())
 
-    # 4. Compute PV generation
     solar["solar_generation_kwh"] = solar["ALLSKY_SFC_SW_DWN"].apply(
         lambda irradiance: calculate_solar_generation(
             irradiance_wh_m2=irradiance,

@@ -9,7 +9,6 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Find main results directory
 POSSIBLE_MAIN_DIRS = [
     os.getenv("RESULTS_DIR"),
     os.path.abspath(os.path.join(SERVER_DIR, "../../data/results")),
@@ -18,7 +17,6 @@ POSSIBLE_MAIN_DIRS = [
 ]
 RESULTS_DIR = next((p for p in POSSIBLE_MAIN_DIRS if p and os.path.isdir(p)), POSSIBLE_MAIN_DIRS[1])
 
-# Find v1 results directory
 POSSIBLE_V1_DIRS = [
     os.getenv("RESULTS_V1_DIR"),
     os.path.abspath(os.path.join(SERVER_DIR, "../../data/results_v1")),

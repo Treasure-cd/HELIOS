@@ -66,7 +66,7 @@ All strategies use identical hardware, solar, demand and outage history.
 
 | Input | Source |
 |---|---|
-| Solar irradiance | Real hourly data for Uyo from [NASA POWER](https://power.larc.nasa.gov/). Originally scoped for Lagos; Uyo was used because it is the target context. |
+| Solar irradiance | Real hourly data for Uyo from [NASA POWER](https://power.larc.nasa.gov/). Originally, Uyo was used because it is the target context. |
 | Household demand | Synthetic hourly profile built from typical Nigerian household appliances |
 | Grid outages | Synthetic: Poisson event counts with lognormal durations, in four scenarios (mild, moderate, severe, extreme) and two start-time patterns (uniform, evening-heavy) |
 
@@ -77,13 +77,12 @@ All strategies use identical hardware, solar, demand and outage history.
 - 30 independent outage seeds per configuration, six hardware sizes, strategies compared on paired outage years.
 - Strategy selected on seeds 0-9 and reported on seeds 10-29. The predictor was trained on separate seeds (100-114).
 
-Full write-up: [REPORT.md](REPORT.md)
 
 ## Reproduce
 
 ```bash
-git clone https://github.com/treasure-cd/REPO-NAME.git
-cd REPO-NAME
+git clone https://github.com/treasure-cd/HELIOS.git
+cd HELIOS
 pip install -r requirements.txt
 python src/data/load_solar.py && python src/data/generate_demand.py
 python src/run_sweep.py --sweep --seeds 30       # sizing sweep, uniform outages
@@ -103,7 +102,6 @@ Results are written to `data/results/`. Or open the notebook in Colab with the b
 - One solar year; only the outage timeline varies between seeds.
 - The headline system size was chosen after seeing the sweep because the base system is oversized. All six sizes are reported.
 - Calendar ageing, generator maintenance and time-of-use tariffs are not modelled.
-- Solar timestamps: UTC-to-local handling is unverified. <!-- confirm before publishing -->
 
 ## Scope
 

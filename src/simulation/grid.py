@@ -26,10 +26,8 @@ def generate_grid_availability(
     n = len(timestamps)
     hours = pd.DatetimeIndex(timestamps).hour
 
-    # Number of events: Poisson around the yearly average
     n_events = rng.poisson(events_per_year)
 
-    # Start positions: uniform or weighted by hour of day
     if start_hour_weights is None:
         p = None
     else:

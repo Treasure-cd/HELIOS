@@ -20,7 +20,7 @@ ETA = sqrt(cfg.BATTERY_ROUND_TRIP_EFFICIENCY)
 
 
 def make_state(rows):
-    """rows: list of (solar_kwh, demand_kwh, grid_up)."""
+    # rows: list of (solar_kwh, demand_kwh, grid_up)
     n = len(rows)
     ts = pd.date_range("2025-01-01", periods=n, freq="h")
     return pd.DataFrame({

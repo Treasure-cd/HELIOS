@@ -16,7 +16,7 @@ def make_oracle_strategy(
     grid_up = state[grid_col].to_numpy().astype(bool)
     demand = state["demand_kwh"].to_numpy(dtype=float)
     solar = np.clip(state[solar_col].to_numpy(dtype=float), 0.0, None)
-    net_load = np.maximum(demand - solar, 0.0)   # what the battery/generator must supply
+    net_load = np.maximum(demand - solar, 0.0)
     n = len(grid_up)
 
     def next_outage(i: int):

@@ -1,29 +1,3 @@
-"""
-HELIOS simulation engine.
-
-The engine knows PHYSICS, not STRATEGY.
-
-    strategy(hour, battery) -> Decision      what the strategy WANTS (kWh requests)
-    engine                  -> final flows   what the system can actually DO
-
-For every hour the engine:
-  1. asks the strategy for requested energy flows
-  2. clips them to physical limits (supply, battery power/SOC, generator rating,
-     grid availability)
-  3. updates the battery state of charge
-  4. checks the energy balance, and stops with an error if it is violated
-  5. records the hour
-
-Resolution order when serving the household load:
-    solar -> battery -> grid -> generator
-Requests are clipped to the load still unmet at each step, so a strategy should
-request amounts that do not overlap. Any load left over is recorded as unserved
-energy; the engine never starts the generator on its own.
-
-Costs are NOT computed here (see metrics.py); the engine only records flows,
-fuel use and battery state.
-"""
-
 from dataclasses import dataclass, fields
 from math import sqrt
 from typing import Callable, Optional
@@ -32,28 +6,22 @@ import pandas as pd
 
 from simulation import config as cfg
 
-DT_H = 1.0     # one timestep = one hour, so kW and kWh are numerically equal
+DT_H = 1.0     # one timestep is one hour, so kW and kWh are numerically equal
 EPS = 1e-9
 
-
-# --------------------------------------------------------------------------
-# Data passed to / from strategies
-# --------------------------------------------------------------------------
 @dataclass
 class HourInput:
-    """Everything a strategy may know about the current hour."""
     i: int
     timestamp: pd.Timestamp
     hour: int
     is_weekend: bool
-    solar_kwh: float          # solar energy available this hour
+    solar_kwh: float
     demand_kwh: float
     grid_available: bool
 
 
 @dataclass
 class Decision:
-    """Requested energy flows for one hour, in kWh. All default to 0."""
     solar_to_load: float = 0.0
     solar_to_battery: float = 0.0
     grid_to_load: float = 0.0
@@ -65,19 +33,7 @@ class Decision:
 
 Strategy = Callable[[HourInput, "Battery"], Decision]
 
-
-# --------------------------------------------------------------------------
-# Battery
-# --------------------------------------------------------------------------
 class Battery:
-    """
-    SOC is a fraction of nameplate capacity. Usable window: [min_soc, max_soc].
-    Round-trip efficiency is split equally between charging and discharging.
-
-    Flows are measured at the battery terminals:
-      charge_in  : energy delivered INTO the battery   (stored += charge_in * eta)
-      discharge_out : energy delivered OUT to the load (stored -= out / eta)
-    """
 
     def __init__(
         self,
@@ -102,12 +58,12 @@ class Battery:
         return self.soc * self.capacity_kwh
 
     def max_charge_input_kwh(self) -> float:
-        """Most energy the battery can accept this hour."""
+        # Most energy the battery can accept this hour.
         room = (self.max_soc - self.soc) * self.capacity_kwh / self.eta
         return max(0.0, min(self.max_charge_kw * DT_H, room))
 
     def max_discharge_output_kwh(self) -> float:
-        """Most energy the battery can deliver to the load this hour."""
+        # Most energy the battery can deliver to the load this hour
         usable = (self.soc - self.min_soc) * self.capacity_kwh * self.eta
         return max(0.0, min(self.max_discharge_kw * DT_H, usable))
 
@@ -120,15 +76,13 @@ class Battery:
         self.soc = stored / self.capacity_kwh
 
 
-# --------------------------------------------------------------------------
-# Generator
-# --------------------------------------------------------------------------
+
 def generator_capacity_kwh() -> float:
     return cfg.GENERATOR_RATED_KW * DT_H
 
 
 def generator_fuel_l(output_kwh: float) -> float:
-    """Litres burned in an hour producing `output_kwh`. Zero if not running."""
+    # Litres burned in an hour producing outputkwh, call it zero if not running
     if output_kwh <= EPS:
         return 0.0
     load_fraction = min(output_kwh / generator_capacity_kwh(), 1.0)
@@ -137,9 +91,6 @@ def generator_fuel_l(output_kwh: float) -> float:
     ) * load_fraction
 
 
-# --------------------------------------------------------------------------
-# Main loop
-# --------------------------------------------------------------------------
 REQUIRED_COLUMNS = ["timestamp", "hour", "is_weekend", "demand_kwh"]
 
 
@@ -151,14 +102,7 @@ def run_simulation(
     battery: Optional[Battery] = None,
     check_each_hour: bool = True,
 ) -> pd.DataFrame:
-    """
-    Run one strategy over one grid scenario.
 
-    state    : the merged state table (one row per hour)
-    grid_col : which outage scenario to use, e.g. "grid_moderate"
-    solar_col: which solar column to use (lets us sweep PV size later)
-    battery  : pass a configured Battery for sensitivity runs; default from config
-    """
     missing = [c for c in REQUIRED_COLUMNS + [grid_col, solar_col] if c not in state]
     if missing:
         raise KeyError(f"state table is missing columns: {missing}")
@@ -187,7 +131,7 @@ def run_simulation(
         decision = strategy(hour, battery)
         req = {name: max(0.0, float(getattr(decision, name))) for name in request_fields}
 
-        # ---- 1. serve the load: solar -> battery -> grid -> generator ----
+
         solar_to_load = min(req["solar_to_load"], solar, demand)
         remaining = demand - solar_to_load
 
@@ -204,7 +148,6 @@ def run_simulation(
 
         unserved = max(remaining, 0.0)
 
-        # ---- 2. charge the battery (never in an hour it discharges) ----
         solar_to_battery = grid_to_battery = generator_to_battery = 0.0
         if battery_to_load <= EPS:
             room = battery.max_charge_input_kwh()
@@ -222,16 +165,12 @@ def run_simulation(
         grid_import = grid_to_load + grid_to_battery
         generator_output = generator_to_load + generator_to_battery
 
-        # ---- 3. update battery ----
+
         battery.update(charge_in, battery_to_load)
         stored_change = (battery.soc - soc_start) * battery.capacity_kwh
         battery_losses = charge_in * (1 - battery.eta) + battery_to_load * (
             1 / battery.eta - 1
         )
-
-        # ---- 4. energy balance (independent of how the flows were derived) ----
-        # in : solar + grid + generator
-        # out: load actually served + curtailed + net change in stored energy + losses
         served = demand - unserved
         balance_error = (solar + grid_import + generator_output) - (
             served + curtailed + stored_change + battery_losses
@@ -273,11 +212,7 @@ def run_simulation(
     return results
 
 
-# --------------------------------------------------------------------------
-# Whole-run physical checks
-# --------------------------------------------------------------------------
 def check_invariants(res: pd.DataFrame, battery: Battery) -> None:
-    """Raise AssertionError if any physical rule was broken in the run."""
     flow_cols = [c for c in res.columns if c.endswith("_kwh") or c == "generator_fuel_l"]
     assert (res[flow_cols] >= -EPS).all().all(), "negative flow found"
 

@@ -56,7 +56,7 @@ def test_holds_energy_for_coming_outage():
     demand = [0.8] * 8
     grid = [1, 1, 1, 1, 0, 0, 0, 1]
     res = run(solar, demand, grid, soc=0.6, precharge_h=0)
-    # while waiting, battery must not be drained below what the outage needs
+    # added so while waiting, battery must not be drained below what the outage needs
     needed_kwh = 3 * 0.8
     stored_at_outage = res.iloc[4].battery_soc_start * cfg.BATTERY_CAPACITY_KWH
     floor = cfg.BATTERY_MIN_SOC * cfg.BATTERY_CAPACITY_KWH
